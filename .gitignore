@@ -1,5 +1,6 @@
 cuda_kernels.hpp
 hip_kernels.hpp
+opencl_kernels.hpp
 build
 debug
 *.o

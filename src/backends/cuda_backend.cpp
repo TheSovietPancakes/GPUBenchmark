@@ -112,21 +112,27 @@ bool CudaBackend::gpuUtilizationSafe(void* nvmlDevice) {
 bool CudaBackend::memUtilizationSafe(void* nvmlDevice) {
   nvmlMemory_t memoryInfo;
   NVML_ERR(nvmlDeviceGetMemoryInfo(nvmlDevice, &memoryInfo));
-  // This bench will use rougly 2 GB of memory. Check if the available VRAM is sufficient.
+  // This bench will use roughly 2 GB of memory. Require device to have at least requiredMem total memory.
   const unsigned long long requiredMem = 2ull * 1024 * 1024 * 1024;
-  if (memoryInfo.free < requiredMem) {
-    std::cout << CUDA << "Skipping benchmark on this device due to insufficient free memory (" << RED << (memoryInfo.free / (1024 * 1024))
-              << "mb/2048mb required free" << RESET << ")\n";
+  if (memoryInfo.total < requiredMem) {
+    std::cout << CUDA << "Skipping benchmark on this device due to insufficient total memory (" << RED << (memoryInfo.total / (1024 * 1024))
+              << "mb/2048mb required total" << RESET << ")\n";
     return false;
   }
   double usagePercent = (double)memoryInfo.used / (double)memoryInfo.total * 100.0;
+  // Require that at most 25% of total memory is used
+  if (usagePercent > 25.0) {
+    std::cout << CUDA << "Skipping benchmark on this device due to high memory usage (" << RED << std::fixed << std::setprecision(2) << usagePercent
+              << "% used, max 25% allowed" << RESET << ")\n";
+    return false;
+  }
   std::string_view memColor;
-  if (usagePercent < 50.0) {
+  if (usagePercent < 20.0) {
     memColor = GREEN;
-  } else if (usagePercent < 75.0) {
+  } else if (usagePercent < 25.0) {
     memColor = "\033[33m"; // Yellow
   } else {
-    memColor = RED;
+    memColor = RED; // Should never be reached, but might
   }
   std::cout << CUDA << "GPU Memory: " << memColor << (memoryInfo.used / (1024 * 1024)) << " MB / " << (memoryInfo.total / (1024 * 1024)) << " MB ("
             << std::fixed << std::setprecision(2) << usagePercent << "%" << RESET << ")\n";
@@ -165,9 +171,9 @@ bool CudaBackend::slowBenchmarks(float linearSetTime, float linearMultiplyTime) 
     std::cin >> userInput;
     if (!stringsRoughlyMatch(userInput, confirmWords[randIdx])) {
       std::cout << CUDA << "Aborting further benchmarks on this device.\n";
-      return false;
+      return true;
     }
-    return true;
+    return false;
   }
   return false;
 }
@@ -221,13 +227,15 @@ void CudaBackend::prepareDeviceForBenchmarking(int dev) {
     return;
   }
   std::cout << CUDA << "All set. Starting full test suite...\n";
-  CUfunction fmaKernel, intThroughputKernel, sharedMemoryKernel;
+  CUfunction fmaKernel, intThroughputKernel, sharedMemoryKernel, sgemmKernel;
   CUDA_ERR(cuModuleGetFunction(&fmaKernel, module, "fmaKernel"));
   CUDA_ERR(cuModuleGetFunction(&intThroughputKernel, module, "integerThroughputKernel"));
   CUDA_ERR(cuModuleGetFunction(&sharedMemoryKernel, module, "sharedMemoryKernel"));
+  CUDA_ERR(cuModuleGetFunction(&sgemmKernel, module, "sgemmKernel"));
   runFmaBenchmark(threadsPerBlock, fmaKernel);
   runIntegerThroughputBenchmark(threadsPerBlock, intThroughputKernel);
   runSharedMemoryBenchmark(threadsPerBlock, sharedMemoryKernel);
+  runSgemmBenchmark(threadsPerBlock, sgemmKernel);
   // Unload context, module, functions, free data, get ready for next device
   CUDA_ERR(cuModuleUnload(module));
   CUDA_ERR(cuCtxDestroy(context));
@@ -366,7 +374,6 @@ float CudaBackend::runFmaBenchmark(unsigned int threadsPerBlock, CudaBackend::CU
   float milliseconds = 0;
   std::cout << "\r" << CUDA << "3) FMA (~" << N / 1000000 << "M elements, " << totalIterations << " iterations)... Running..." << std::flush;
   CUDA_BENCHMARK_KERNEL(fmaFunc, blocks, threadsPerBlock, args, milliseconds);
-
   std::cout << "\r" << CUDA << "3) FMA (~" << N / 1000000 << "M elements, " << totalIterations << " iterations)...";
   std::cout << GREEN << " PASSED" << RESET;
   std::cout << " in " << std::fixed << std::setprecision(5) << milliseconds << " ms\n";
@@ -389,8 +396,6 @@ float CudaBackend::runIntegerThroughputBenchmark(unsigned int threadsPerBlock, C
   std::cout << "\r" << CUDA << "4) Integer Throughput (~" << N / 1000000 << "M elements, " << totalIterations << " iterations)... Running..."
             << std::flush;
   CUDA_BENCHMARK_KERNEL(intThroughputFunc, blocks, threadsPerBlock, args, milliseconds);
-  std::cout << "\r" << CUDA << "4) Integer Throughput (~" << N / 1000000 << "M elements, " << totalIterations << " iterations)... Verifying..."
-            << std::flush;
   std::cout << "\r" << CUDA << "4) Integer Throughput (~" << N / 1000000 << "M elements, " << totalIterations << " iterations)..." << GREEN
             << " PASSED" << RESET;
   std::cout << " in " << std::fixed << std::setprecision(5) << milliseconds << " ms\n";
@@ -421,46 +426,87 @@ float CudaBackend::runSharedMemoryBenchmark(unsigned int threadsPerBlock, CudaBa
   return milliseconds;
 }
 
-void CudaBackend::shutdown() {
-  if (cudaHandle) {
-    cuMemAlloc = nullptr;
-    cuMemFree = nullptr;
-    cuDeviceGetCount = nullptr;
-    cuDeviceGet = nullptr;
-    cuDeviceGetName = nullptr;
-    cuCtxCreate = nullptr;
-    cuCtxDestroy = nullptr;
-    cuCtxSynchronize = nullptr;
-    cuModuleLoadData = nullptr;
-    cuModuleUnload = nullptr;
-    cuModuleGetFunction = nullptr;
-    cuLaunchKernel = nullptr;
-    cuMemcpyHtoD = nullptr;
-    cuMemcpyDtoH = nullptr;
-    cuMemsetD8 = nullptr;
-    cuEventCreate = nullptr;
-    cuEventRecord = nullptr;
-    cuEventSynchronize = nullptr;
-    cuEventElapsedTime = nullptr;
-    cuEventDestroy = nullptr;
-    cuStreamCreate = nullptr;
-    cuStreamDestroy = nullptr;
-    cuDeviceTotalMem = nullptr;
-    cuDeviceComputeCapability = nullptr;
-    cuDeviceGetAttribute = nullptr;
-    cuGetErrorString = nullptr;
-
-    nvmlShutdown();
-    nvmlInit = nullptr;
-    nvmlShutdown = nullptr;
-    nvmlDeviceGetHandleByIndex = nullptr;
-    nvmlDeviceGetUtilizationRates = nullptr;
-    nvmlDeviceGetTemperature = nullptr;
-    nvmlDeviceGetMemoryInfo = nullptr;
-
-    closeLibrary(cudaHandle);
-    closeLibrary(nvmlHandle);
-    cudaHandle = nullptr;
-    nvmlHandle = nullptr;
+float CudaBackend::runSgemmBenchmark(unsigned int threadsPerBlock, void* kernel) {
+  constexpr const unsigned long long N = 1024; // 1024 x 1024 matrix (Pretty big! This will NOT be a 1gib test!)
+  constexpr const unsigned int totalIterations = 5000;
+  std::cout << CUDA << "6) SGEMM/Matrix mulitplication (" << N << "x" << N << " matrix, " << totalIterations << " iterations)..." << std::flush;
+  // Host side preparation
+  float* h_A = new float[N * N];
+  float* h_B = new float[N * N];
+  float* h_C = new float[N * N];
+  for (unsigned long long i = 0ull; i < N * N; ++i) {
+    h_A[i] = static_cast<float>(i % 100) / 10.0f;
+    h_B[i] = static_cast<float>((i + 3) % 100) / 10.0f;
+    h_C[i] = 0.0f;
   }
+  CUdeviceptr d_A = 0, d_B = 0, d_C = 0;
+  CUDA_ERR(cuMemAlloc(&d_A, N * N * sizeof(float)));
+  CUDA_ERR(cuMemAlloc(&d_B, N * N * sizeof(float)));
+  CUDA_ERR(cuMemAlloc(&d_C, N * N * sizeof(float)));
+  CUDA_ERR(cuMemcpyHtoD(d_A, h_A, N * N * sizeof(float)));
+  CUDA_ERR(cuMemcpyHtoD(d_B, h_B, N * N * sizeof(float)));
+  CUDA_ERR(cuMemsetD8(d_C, 0, N * N * sizeof(float)));
+  unsigned long long blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+  void* args[] = {&d_A, &d_B, &d_C, (void*)&N, (void*)&totalIterations};
+  float milliseconds = 0;
+  std::cout << "\r" << CUDA << "6) SGEMM/Matrix mulitplication (" << N << "x" << N << " matrix, " << totalIterations << " iterations)... Running..."
+            << std::flush;
+  CUDA_BENCHMARK_KERNEL((CudaBackend::CUfunction)kernel, blocks, threadsPerBlock, args, milliseconds);
+
+  // No verification after initial tests, because their entire purpose was to check for correctness.
+  // Now we just want performance! The verification is probably not necessary.
+  std::cout << "\r" << CUDA << "6) SGEMM/Matrix mulitplication (" << N << "x" << N << " matrix, " << totalIterations << " iterations)..." << GREEN
+            << " PASSED" << RESET;
+  std::cout << " in " << std::fixed << std::setprecision(5) << milliseconds << " ms\n";
+  CUDA_ERR(cuMemFree(d_A));
+  CUDA_ERR(cuMemFree(d_B));
+  CUDA_ERR(cuMemFree(d_C));
+  delete[] h_A;
+  delete[] h_B;
+  delete[] h_C;
+  return milliseconds;
+}
+
+void CudaBackend::shutdown() {
+  if (nvmlShutdown != nullptr)
+    nvmlShutdown();
+
+  cuMemAlloc = nullptr;
+  cuMemFree = nullptr;
+  cuDeviceGetCount = nullptr;
+  cuDeviceGet = nullptr;
+  cuDeviceGetName = nullptr;
+  cuCtxCreate = nullptr;
+  cuCtxDestroy = nullptr;
+  cuCtxSynchronize = nullptr;
+  cuModuleLoadData = nullptr;
+  cuModuleUnload = nullptr;
+  cuModuleGetFunction = nullptr;
+  cuLaunchKernel = nullptr;
+  cuMemcpyHtoD = nullptr;
+  cuMemcpyDtoH = nullptr;
+  cuMemsetD8 = nullptr;
+  cuEventCreate = nullptr;
+  cuEventRecord = nullptr;
+  cuEventSynchronize = nullptr;
+  cuEventElapsedTime = nullptr;
+  cuEventDestroy = nullptr;
+  cuStreamCreate = nullptr;
+  cuStreamDestroy = nullptr;
+  cuDeviceTotalMem = nullptr;
+  cuDeviceComputeCapability = nullptr;
+  cuDeviceGetAttribute = nullptr;
+  cuGetErrorString = nullptr;
+
+  nvmlInit = nullptr;
+  nvmlShutdown = nullptr;
+  nvmlDeviceGetHandleByIndex = nullptr;
+  nvmlDeviceGetUtilizationRates = nullptr;
+  nvmlDeviceGetTemperature = nullptr;
+  nvmlDeviceGetMemoryInfo = nullptr;
+
+  closeLibrary(cudaHandle);
+  closeLibrary(nvmlHandle);
+  cudaHandle = nullptr;
+  nvmlHandle = nullptr;
 }

@@ -44,31 +44,66 @@ int get_terminal_width() {
   return w.ws_col;
 }
 
+std::string removeUnreadable(const std::string& str) {
+  std::string result;
+  result.reserve(str.size());
+  bool inEscape = false;
+  for (size_t i = 0; i < str.size(); ++i) {
+    if (!inEscape && str[i] == '\033' && i + 1 < str.size() && str[i + 1] == '[') {
+      inEscape = true;
+      ++i; // Skip the '['
+      continue;
+    }
+    if (inEscape) {
+      // Skip until we find a letter (ANSI sequence end)
+      if ((str[i] >= 'A' && str[i] <= 'Z') || (str[i] >= 'a' && str[i] <= 'z')) {
+        inEscape = false;
+      }
+      continue;
+    }
+    result.push_back(str[i]);
+  }
+  return result;
+}
+
 // Ex. prefix: "[CUDA] ". This will determine the space before each line.
+// [CUDA] This is an
+//        example of
+//        wrapped text.
 void wrapped_print(const std::string& prefix, const std::string& text) {
   int width = get_terminal_width();
-  int prefix_len = prefix.size();
+  int prefix_len = removeUnreadable(prefix).size();
 
-  std::istringstream words(text);
-  std::string word;
-
-  int line_len = prefix_len;
-  std::cout << prefix;
-
-  while (words >> word) {
-    if (line_len + 1 + (int)word.size() > width) {
+  std::istringstream lines(text);
+  std::string line;
+  bool first_line = true;
+  while (std::getline(lines, line)) {
+    std::istringstream words(line);
+    std::string word;
+    int current_len = prefix_len;
+    if (first_line) {
+      std::cout << prefix;
+      first_line = false;
+    } else {
       std::cout << "\n" << std::string(prefix_len, ' ');
-      line_len = prefix_len;
+      current_len = prefix_len;
     }
-
-    if (line_len > prefix_len) {
-      std::cout << " ";
-      line_len++;
+    bool first_word = true;
+    while (words >> word) {
+      int word_len = removeUnreadable(word).size();
+      static const int space_len = 1;
+      if (!first_word && current_len + word_len + space_len > width) {
+        std::cout << "\n" << std::string(prefix_len, ' ');
+        current_len = prefix_len;
+        first_word = true;
+      }
+      if (!first_word) {
+        std::cout << " ";
+        current_len += space_len;
+      }
+      std::cout << word;
+      current_len += word_len;
+      first_word = false;
     }
-
-    std::cout << word;
-    line_len += word.size();
   }
-
-  std::cout << "\n";
 }

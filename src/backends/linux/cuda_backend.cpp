@@ -20,7 +20,7 @@ bool CudaBackend::init() {
 #define LOAD_CUDA_SYMBOL(sym)                                                                                                                        \
   sym = (sym##_t)dlsym(cudaHandle, #sym);                                                                                                            \
   if (!sym) {                                                                                                                                        \
-    std::cerr << "Failed to load symbol for CUDA so " #sym ": " << dlerror() << "\n";                                                                            \
+    std::cerr << "Failed to load symbol for CUDA so " #sym ": " << dlerror() << "\n";                                                                \
     dlclose(cudaHandle);                                                                                                                             \
     cudaHandle = nullptr;                                                                                                                            \
     return false;                                                                                                                                    \
@@ -29,7 +29,7 @@ bool CudaBackend::init() {
 #define LOAD_NVML_SYMBOL(sym)                                                                                                                        \
   sym = (sym##_t)dlsym(nvmlHandle, #sym);                                                                                                            \
   if (!sym) {                                                                                                                                        \
-    std::cerr << "Failed to load symbol for NVML so " #sym ": " << dlerror() << "\n";                                                                            \
+    std::cerr << "Failed to load symbol for NVML so " #sym ": " << dlerror() << "\n";                                                                \
     dlclose(nvmlHandle);                                                                                                                             \
     nvmlHandle = nullptr;                                                                                                                            \
     return false;                                                                                                                                    \
@@ -87,10 +87,4 @@ bool CudaBackend::init() {
     return false;
   }
   return true;
-}
-
-void CudaBackend::closeLibrary(void* handle) {
-  if (handle) {
-    dlclose(handle);
-  }
 }

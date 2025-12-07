@@ -95,9 +95,3 @@ bool CudaBackend::init() {
   }
   return true;
 }
-
-void CudaBackend::closeLibrary(void* handle) {
-  if (handle) {
-    dlclose(handle);
-  }
-}

@@ -27,12 +27,11 @@ int main() {
   //     vk.shutdown();
   // }
 
-  // // OpenCL
-  // OpenCLBackend cl;
-  // if (cl.init()) {
-  //     cl.runBenchmark();
-  //     cl.shutdown();
-  // }
+  // OpenCL
+  if (CLBackend::init()) {
+      CLBackend::runBenchmark();
+      CLBackend::shutdown();
+  }
 
   std::cout << "All benchmarks done.\n";
   return 0;

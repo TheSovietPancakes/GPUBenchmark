@@ -97,9 +97,3 @@ bool CudaBackend::init() {
   }
   return true;
 }
-
-void CudaBackend::closeLibrary(void* handle) {
-  if (handle) {
-    FreeLibrary(static_cast<HMODULE>(handle));
-  }
-}

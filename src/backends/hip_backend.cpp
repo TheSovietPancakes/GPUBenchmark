@@ -7,39 +7,39 @@
 #include <iostream>
 #include <vector>
 
-HIPBackend::hipInit_t HIPBackend::hipInit;
-HIPBackend::hipDeviceReset_t HIPBackend::hipDeviceReset;
-HIPBackend::hipSetDevice_t HIPBackend::hipSetDevice;
-HIPBackend::hipGetDeviceCount_t HIPBackend::hipGetDeviceCount;
-HIPBackend::hipGetDevice_t HIPBackend::hipGetDevice;
-HIPBackend::hipGetDeviceProperties_t HIPBackend::hipGetDeviceProperties;
-HIPBackend::hipMalloc_t HIPBackend::hipMalloc;
-HIPBackend::hipFree_t HIPBackend::hipFree;
-HIPBackend::hipMemcpy_t HIPBackend::hipMemcpy;
-HIPBackend::hipMemset_t HIPBackend::hipMemset;
+HIPBackend::hipInit_t HIPBackend::hipInit = nullptr;
+HIPBackend::hipDeviceReset_t HIPBackend::hipDeviceReset = nullptr;
+HIPBackend::hipSetDevice_t HIPBackend::hipSetDevice = nullptr;
+HIPBackend::hipGetDeviceCount_t HIPBackend::hipGetDeviceCount = nullptr;
+HIPBackend::hipGetDevice_t HIPBackend::hipGetDevice = nullptr;
+HIPBackend::hipGetDeviceProperties_t HIPBackend::hipGetDeviceProperties = nullptr;
+HIPBackend::hipMalloc_t HIPBackend::hipMalloc = nullptr;
+HIPBackend::hipFree_t HIPBackend::hipFree = nullptr;
+HIPBackend::hipMemcpy_t HIPBackend::hipMemcpy = nullptr;
+HIPBackend::hipMemset_t HIPBackend::hipMemset = nullptr;
 // Events + Streams
-HIPBackend::hipEventCreate_t HIPBackend::hipEventCreate;
-HIPBackend::hipEventDestroy_t HIPBackend::hipEventDestroy;
-HIPBackend::hipEventRecord_t HIPBackend::hipEventRecord;
-HIPBackend::hipEventSynchronize_t HIPBackend::hipEventSynchronize;
-HIPBackend::hipEventElapsedTime_t HIPBackend::hipEventElapsedTime;
-HIPBackend::hipStreamCreate_t HIPBackend::hipStreamCreate;
-HIPBackend::hipStreamDestroy_t HIPBackend::hipStreamDestroy;
+HIPBackend::hipEventCreate_t HIPBackend::hipEventCreate = nullptr;
+HIPBackend::hipEventDestroy_t HIPBackend::hipEventDestroy = nullptr;
+HIPBackend::hipEventRecord_t HIPBackend::hipEventRecord = nullptr;
+HIPBackend::hipEventSynchronize_t HIPBackend::hipEventSynchronize = nullptr;
+HIPBackend::hipEventElapsedTime_t HIPBackend::hipEventElapsedTime = nullptr;
+HIPBackend::hipStreamCreate_t HIPBackend::hipStreamCreate = nullptr;
+HIPBackend::hipStreamDestroy_t HIPBackend::hipStreamDestroy = nullptr;
 // Module (like HIP driver API)
-HIPBackend::hipModuleLoadData_t HIPBackend::hipModuleLoadData;
-HIPBackend::hipModuleUnload_t HIPBackend::hipModuleUnload;
-HIPBackend::hipModuleGetFunction_t HIPBackend::hipModuleGetFunction;
-HIPBackend::hipModuleLaunchKernel_t HIPBackend::hipModuleLaunchKernel;
+HIPBackend::hipModuleLoadData_t HIPBackend::hipModuleLoadData = nullptr;
+HIPBackend::hipModuleUnload_t HIPBackend::hipModuleUnload = nullptr;
+HIPBackend::hipModuleGetFunction_t HIPBackend::hipModuleGetFunction = nullptr;
+HIPBackend::hipModuleLaunchKernel_t HIPBackend::hipModuleLaunchKernel = nullptr;
 // Error
-HIPBackend::hipGetErrorString_t HIPBackend::hipGetErrorString;
+HIPBackend::hipGetErrorString_t HIPBackend::hipGetErrorString = nullptr;
 // RSMI
-HIPBackend::rsmi_init_t HIPBackend::rsmi_init;
-HIPBackend::rsmi_shut_down_t HIPBackend::rsmi_shut_down;
-HIPBackend::rsmi_dev_temp_metric_get_t HIPBackend::rsmi_dev_temp_metric_get;
-HIPBackend::rsmi_dev_memory_total_get_t HIPBackend::rsmi_dev_memory_total_get;
-HIPBackend::rsmi_dev_memory_usage_get_t HIPBackend::rsmi_dev_memory_usage_get;
-HIPBackend::rsmi_dev_name_get_t HIPBackend::rsmi_dev_name_get;
-HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get;
+HIPBackend::rsmi_init_t HIPBackend::rsmi_init = nullptr;
+HIPBackend::rsmi_shut_down_t HIPBackend::rsmi_shut_down = nullptr;
+HIPBackend::rsmi_dev_temp_metric_get_t HIPBackend::rsmi_dev_temp_metric_get = nullptr;
+HIPBackend::rsmi_dev_memory_total_get_t HIPBackend::rsmi_dev_memory_total_get = nullptr;
+HIPBackend::rsmi_dev_memory_usage_get_t HIPBackend::rsmi_dev_memory_usage_get = nullptr;
+HIPBackend::rsmi_dev_name_get_t HIPBackend::rsmi_dev_name_get = nullptr;
+HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get = nullptr;
 
 #define HIP_ERR(call)                                                                                                                                \
   do {                                                                                                                                               \
@@ -77,19 +77,24 @@ bool HIPBackend::memUtilizationSafe(int dev) {
   // This bench will use rougly 2 GB of memory. Check if the available VRAM is sufficient.
   const unsigned long long requiredMem = 2ull * 1024 * 1024 * 1024;
   unsigned long memoryFree = totalMemory - usedMemory;
-  if (memoryFree < requiredMem) {
-    std::cout << HIP << "Skipping benchmark on this device due to insufficient free memory (" << RED << (memoryFree / (1024 * 1024))
-              << "mb/2048mb required free" << RESET << ")\n";
+  if (totalMemory < requiredMem) {
+    std::cout << HIP << "Skipping benchmark on this device due to insufficient total memory (" << RED << (totalMemory / (1024 * 1024))
+              << "mb/2048mb required" << RESET << ")\n";
     return false;
   }
   double usagePercent = (double)usedMemory / (double)totalMemory * 100.0;
+  if (usagePercent > 25) {
+    std::cout << HIP << "Skipping benchmark on this device due to high memory usage (" << RED << std::fixed << std::setprecision(2) << usagePercent
+              << "%" << RESET << ")\n";
+    return false;
+  }
   std::string_view memColor;
-  if (usagePercent < 50.0) {
+  if (usagePercent < 20.0) {
     memColor = GREEN;
-  } else if (usagePercent < 75.0) {
+  } else if (usagePercent < 25.0) {
     memColor = "\033[33m"; // Yellow
   } else {
-    memColor = RED;
+    memColor = RED; // Should never be reached, but might
   }
   std::cout << HIP << "GPU Memory: " << memColor << (usedMemory / (1024 * 1024)) << " MB / " << (totalMemory / (1024 * 1024)) << " MB (" << std::fixed
             << std::setprecision(2) << usagePercent << "%" << RESET << ")\n";
@@ -112,6 +117,7 @@ long HIPBackend::getAndPrintTemperature(int dev) {
   return temp;
 }
 
+// Returns true if the benchmark was "slow", and should be skipped.
 bool HIPBackend::slowBenchmarks(float linearSetTime, float linearMultiplyTime) {
   constexpr static const float slowMSThreshold = 50.0f;
   if (linearSetTime > slowMSThreshold || linearMultiplyTime > slowMSThreshold) {
@@ -129,9 +135,9 @@ bool HIPBackend::slowBenchmarks(float linearSetTime, float linearMultiplyTime) {
     std::cin >> userInput;
     if (!stringsRoughlyMatch(userInput, confirmWords[randIdx])) {
       std::cout << HIP << "Aborting further benchmarks on this device.\n";
-      return false;
+      return true;
     }
-    return true;
+    return false;
   }
   return false;
 }
@@ -174,13 +180,15 @@ void HIPBackend::prepareDeviceForBenchmarking(int dev) {
     return;
   }
   std::cout << HIP << "All set. Starting full test suite...\n";
-  hipFunction_t fmaKernel, intThroughputKernel, sharedMemoryKernel;
+  hipFunction_t fmaKernel, intThroughputKernel, sharedMemoryKernel, sgemmKernel;
   HIP_ERR(hipModuleGetFunction(&fmaKernel, module, "fmaKernel"));
   HIP_ERR(hipModuleGetFunction(&intThroughputKernel, module, "integerThroughputKernel"));
   HIP_ERR(hipModuleGetFunction(&sharedMemoryKernel, module, "sharedMemoryKernel"));
+  HIP_ERR(hipModuleGetFunction(&sgemmKernel, module, "sgemmKernel"));
   runFmaBenchmark(threadsPerBlock, fmaKernel);
   runIntegerThroughputBenchmark(threadsPerBlock, intThroughputKernel);
   runSharedMemoryBenchmark(threadsPerBlock, sharedMemoryKernel);
+  runSgemmBenchmark(threadsPerBlock, sgemmKernel);
 
   HIP_ERR(hipModuleUnload(module));
   HIP_ERR(hipDeviceReset());
@@ -374,42 +382,78 @@ float HIPBackend::runSharedMemoryBenchmark(unsigned int threadsPerBlock, HIPBack
   return milliseconds;
 }
 
-void HIPBackend::shutdown() {
-  if (hipInit != nullptr) {
-    rsmi_shut_down();
-    rsmi_shut_down = nullptr;
-
-    // Turn all functions into nullptr
-    rsmi_dev_temp_metric_get = nullptr;
-    rsmi_dev_memory_total_get = nullptr;
-    rsmi_dev_memory_usage_get = nullptr;
-    rsmi_dev_name_get = nullptr;
-    rsmi_dev_busy_percent_get = nullptr;
-    hipInit = nullptr;
-    hipGetDeviceCount = nullptr;
-    hipGetDevice = nullptr;
-    hipGetDeviceProperties = nullptr;
-    hipDeviceReset = nullptr;
-    hipMalloc = nullptr;
-    hipFree = nullptr;
-    hipMemcpy = nullptr;
-    hipEventCreate = nullptr;
-    hipEventDestroy = nullptr;
-    hipEventRecord = nullptr;
-    hipEventSynchronize = nullptr;
-    hipEventElapsedTime = nullptr;
-    hipStreamCreate = nullptr;
-    hipStreamDestroy = nullptr;
-    hipModuleLoadData = nullptr;
-    hipModuleUnload = nullptr;
-    hipModuleGetFunction = nullptr;
-    hipModuleLaunchKernel = nullptr;
-    hipMemset = nullptr;
-    hipGetErrorString = nullptr;
-
-    closeLibrary(hipHandle);
-    closeLibrary(rsmiHandle);
-    hipHandle = nullptr;
-    rsmiHandle = nullptr;
+float HIPBackend::runSgemmBenchmark(unsigned int threadsPerBlock, hipFunction_t sgemmFunc) {
+  constexpr const unsigned long long N = 1024; // 1024*1024 matrices
+  constexpr const unsigned int totalIterations = 5000;
+  std::cout << HIP << "6) SGEMM/Matrix multiplication (" << N << "x" << N << " matrices, " << totalIterations << " iterations)..." << std::flush;
+  float* h_A = new float[N * N];
+  float* h_B = new float[N * N];
+  float* h_C = new float[N * N];
+  for (unsigned long long i = 0; i < N * N; ++i) {
+    h_A[i] = static_cast<float>(i % 100) / 100.0f;
+    h_B[i] = static_cast<float>((i + 50) % 100) / 100.0f;
+    h_C[i] = 0.0f;
   }
+  hipDeviceptr_t d_A = 0, d_B = 0, d_C = 0;
+  HIP_ERR(hipMalloc(&d_A, N * N * sizeof(float)));
+  HIP_ERR(hipMalloc(&d_B, N * N * sizeof(float)));
+  HIP_ERR(hipMalloc(&d_C, N * N * sizeof(float)));
+  HIP_ERR(hipMemcpy(d_A, h_A, N * N * sizeof(float), hipMemcpyHostToDevice));
+  HIP_ERR(hipMemcpy(d_B, h_B, N * N * sizeof(float), hipMemcpyHostToDevice));
+  HIP_ERR(hipMemset(d_C, 0, N * N * sizeof(float)));
+  unsigned int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+  void* args[] = {&d_A, &d_B, &d_C, (void*)&N, (void*)&totalIterations};
+  float milliseconds = 0;
+  std::cout << "\r" << HIP << "6) SGEMM/Matrix multiplication (" << N << "x" << N << " matrices, " << totalIterations << " iterations)... Running..."
+            << std::flush;
+  HIP_BENCHMARK_KERNEL(sgemmFunc, blocks, threadsPerBlock, args, milliseconds);
+  std::cout << "\r" << HIP << "6) SGEMM/Matrix multiplication (" << N << "x" << N << " matrices, " << totalIterations << " iterations)...";
+  std::cout << GREEN << " PASSED" << RESET << " in " << std::fixed << std::setprecision(5) << milliseconds << " ms\n";
+
+  HIP_ERR(hipFree(d_A));
+  HIP_ERR(hipFree(d_B));
+  HIP_ERR(hipFree(d_C));
+  delete[] h_A;
+  delete[] h_B;
+  delete[] h_C;
+  return milliseconds;
+}
+
+void HIPBackend::shutdown() {
+  if (rsmi_shut_down != nullptr)
+    rsmi_shut_down();
+  rsmi_shut_down = nullptr;
+
+  // Turn all functions into nullptr
+  rsmi_dev_temp_metric_get = nullptr;
+  rsmi_dev_memory_total_get = nullptr;
+  rsmi_dev_memory_usage_get = nullptr;
+  rsmi_dev_name_get = nullptr;
+  rsmi_dev_busy_percent_get = nullptr;
+  hipInit = nullptr;
+  hipGetDeviceCount = nullptr;
+  hipGetDevice = nullptr;
+  hipGetDeviceProperties = nullptr;
+  hipDeviceReset = nullptr;
+  hipMalloc = nullptr;
+  hipFree = nullptr;
+  hipMemcpy = nullptr;
+  hipEventCreate = nullptr;
+  hipEventDestroy = nullptr;
+  hipEventRecord = nullptr;
+  hipEventSynchronize = nullptr;
+  hipEventElapsedTime = nullptr;
+  hipStreamCreate = nullptr;
+  hipStreamDestroy = nullptr;
+  hipModuleLoadData = nullptr;
+  hipModuleUnload = nullptr;
+  hipModuleGetFunction = nullptr;
+  hipModuleLaunchKernel = nullptr;
+  hipMemset = nullptr;
+  hipGetErrorString = nullptr;
+
+  closeLibrary(hipHandle);
+  closeLibrary(rsmiHandle);
+  hipHandle = nullptr;
+  rsmiHandle = nullptr;
 }

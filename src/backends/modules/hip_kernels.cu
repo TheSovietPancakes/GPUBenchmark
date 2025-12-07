@@ -11,7 +11,7 @@ extern "C" __global__ void linearMultiplyKernel(const float* A, const float* B, 
     out[idx] = A[idx] * B[idx];
 }
 
-extern "C" __global__ void fmaKernel(float* out, unsigned int ITERATIONS) {
+extern "C" __global__ void fmaKernel(float* out, const unsigned int ITERATIONS) {
   unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
   float x = 1.0f + idx * 0.0001f; // Cannot be 1 becuase 1 * 1 = 1 :(
@@ -24,7 +24,7 @@ extern "C" __global__ void fmaKernel(float* out, unsigned int ITERATIONS) {
   out[idx] = x;
 }
 
-extern "C" __global__ void sharedMemoryKernel(float* out, unsigned int ITERATIONS) {
+extern "C" __global__ void sharedMemoryKernel(float* out, const unsigned int ITERATIONS) {
   __shared__ float tile[4096];
   int tid = threadIdx.x;
   if (tid < 4096) {
@@ -39,7 +39,7 @@ extern "C" __global__ void sharedMemoryKernel(float* out, unsigned int ITERATION
   }
 }
 
-extern "C" __global__ void integerThroughputKernel(unsigned int* out, unsigned int ITERATIONS) {
+extern "C" __global__ void integerThroughputKernel(unsigned int* out, const unsigned int ITERATIONS) {
   unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
   unsigned int v = idx;
 
@@ -54,14 +54,17 @@ extern "C" __global__ void integerThroughputKernel(unsigned int* out, unsigned i
   out[idx] = v;
 }
 
-extern "C" __global__ void sgemmKernel(const float* A, const float* B, float* C, int N) {
+extern "C" __global__ void sgemmKernel(const float* A, const float* B, float* C, const unsigned long long N, const unsigned int ITERATIONS) {
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (row < N && col < N) {
     float value = 0.0f;
-    for (int k = 0; k < N; ++k) {
-      value += A[row * N + k] * B[k * N + col];
+    for (unsigned int iter = 0; iter < ITERATIONS; ++iter) {
+      value = 0.0f; // Reset value for each iteration
+      for (int k = 0; k < N; ++k) {
+        value += A[row * N + k] * B[k * N + col];
+      }
     }
     C[row * N + col] = value;
   }

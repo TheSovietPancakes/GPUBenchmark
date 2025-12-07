@@ -86,9 +86,3 @@ bool HIPBackend::init() {
   }
   return true;
 }
-
-void HIPBackend::closeLibrary(void* handle) {
-  if (handle) {
-    FreeLibrary(static_cast<HMODULE>(handle));
-  }
-}
