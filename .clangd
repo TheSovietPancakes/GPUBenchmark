@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-I/opt/rocm/include, -I/opt/rocm/include/hip, -I/opt/cuda/include, -Iinc, -L/opt/rocm/lib, -D__HIP_PLATFORM_AMD__]

@@ -1,0 +1,11 @@
+cuda_kernels.hpp
+hip_kernels.hpp
+build
+debug
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+.vscode
+.cache

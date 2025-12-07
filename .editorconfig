@@ -1,0 +1,8 @@
+# 2-space indentation for CPP/C/HPP/H/CC/all of those files
+# No newline braces (they stick to the previous line, e.x. if { or while {)
+[*.{cpp,cc,c, hpp,hh,h}]
+indent_style = space
+indent_size = 2
+brace_style = none
+insert_final_newline = true
+trim_trailing_whitespace = true
