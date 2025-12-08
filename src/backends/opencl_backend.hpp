@@ -17,7 +17,7 @@ typedef unsigned long cl_queue_properties;
 
 bool init();
 bool slowBenchmarks(float linearSetTime, float linearMultiplyTime);
-void prepareDeviceForBenchmarking(cl_device_id dev, cl_context context, cl_command_queue queue, cl_program program);
+void prepareDeviceForBenchmarking(cl_device_id dev);
 void runBenchmark();
 void shutdown();
 

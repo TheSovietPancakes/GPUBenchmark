@@ -39,7 +39,7 @@ CLBackend::clReleaseMemObject_t CLBackend::clReleaseMemObject = nullptr;
   } while (0)
 
 bool CLBackend::slowBenchmarks(float linearSetTime, float linearMultiplyTime) {
-  constexpr static const float slowMSThreshold = 400.0f; // Give OpenCL a little more wiggle room, since it can be slower on some devices
+  constexpr static const float slowMSThreshold = 50.0f;
   if (linearSetTime > slowMSThreshold || linearMultiplyTime > slowMSThreshold) {
     // These words are randomly selected to make sure that the user is paying attention! Seriously, these tests
     // may actually take forever, so the user better know what they're in for.
@@ -63,10 +63,42 @@ bool CLBackend::slowBenchmarks(float linearSetTime, float linearMultiplyTime) {
   return false;
 }
 
-void CLBackend::prepareDeviceForBenchmarking(cl_device_id dev, cl_context context, cl_command_queue queue, cl_program program) {
+void CLBackend::prepareDeviceForBenchmarking(cl_device_id dev) {
   char deviceName[256];
   CL_ERR(clGetDeviceInfo(dev, CL_DEVICE_NAME, sizeof(deviceName), deviceName, nullptr));
   std::cout << OPENCL << "Running benches on '" << deviceName << "'\n";
+
+  const cl_device_id devices[] = {dev};
+  // Create a context, program, and command queue
+  cl_context context = clCreateContext(nullptr, 1, devices, nullptr, nullptr, nullptr);
+  if (context == nullptr) {
+    std::cout << OPENCL << "Failed to create OpenCL context for this platform, skipping...\n";
+    return;
+  }
+  cl_queue_properties props[] = {CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0};
+  cl_command_queue queue = clCreateCommandQueueWithProperties(context, devices[0], props, nullptr);
+  if (queue == nullptr) {
+    std::cout << OPENCL << "Failed to create OpenCL command queue for this platform, skipping...\n";
+    clReleaseContext(context);
+    return;
+  }
+  // Create a program
+  cl_program program = clCreateProgramWithSource(context, 1, &openclKernelSource, nullptr, nullptr);
+  if (program == nullptr) {
+    std::cout << OPENCL << "Failed to create OpenCL program for this platform, skipping...\n";
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+    return;
+  }
+  // Compile program
+  int err = clBuildProgram(program, 1, devices, nullptr, nullptr, nullptr);
+  if (err != 0) {
+    std::cout << OPENCL << "Failed to build OpenCL program for this platform, skipping...\n";
+    clReleaseProgram(program);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+    return;
+  }
 
   // Get the max number of threads per block
   size_t maxWorkGroupSize = 0;
@@ -101,6 +133,10 @@ void CLBackend::prepareDeviceForBenchmarking(cl_device_id dev, cl_context contex
   clReleaseKernel(sgemmKernel);
   clReleaseKernel(linearMultiplyKernel);
   clReleaseKernel(linearSetKernel);
+
+  clReleaseProgram(program);
+  clReleaseCommandQueue(queue);
+  clReleaseContext(context);
 }
 
 void CLBackend::runBenchmark() {
@@ -134,43 +170,9 @@ void CLBackend::runBenchmark() {
     }
     std::vector<cl_device_id> devices(deviceCount);
     CL_ERR(clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_ALL, deviceCount, devices.data(), nullptr));
-    // Create a context, program, and command queue
-    cl_context context = clCreateContext(nullptr, deviceCount, devices.data(), nullptr, nullptr, nullptr);
-    if (context == nullptr) {
-      std::cout << OPENCL << "Failed to create OpenCL context for this platform, skipping...\n";
-      continue;
-    }
-    cl_queue_properties props[] = {CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0};
-    cl_command_queue commandQueue = clCreateCommandQueueWithProperties(context, devices[0], props, nullptr);
-    if (commandQueue == nullptr) {
-      std::cout << OPENCL << "Failed to create OpenCL command queue for this platform, skipping...\n";
-      clReleaseContext(context);
-      continue;
-    }
-    // Create a program
-    cl_program program = clCreateProgramWithSource(context, 1, &openclKernelSource, nullptr, nullptr);
-    if (program == nullptr) {
-      std::cout << OPENCL << "Failed to create OpenCL program for this platform, skipping...\n";
-      clReleaseCommandQueue(commandQueue);
-      clReleaseContext(context);
-      continue;
-    }
-    // Compile program
-    int err = clBuildProgram(program, deviceCount, devices.data(), nullptr, nullptr, nullptr);
-    if (err != 0) {
-      std::cout << OPENCL << "Failed to build OpenCL program for this platform, skipping...\n";
-      clReleaseProgram(program);
-      clReleaseCommandQueue(commandQueue);
-      clReleaseContext(context);
-      continue;
-    }
     for (int d = 0; d < deviceCount; ++d) {
-      prepareDeviceForBenchmarking(devices[d], context, commandQueue, program);
+      prepareDeviceForBenchmarking(devices[d]);
     }
-    // Cleanup
-    clReleaseProgram(program);
-    clReleaseCommandQueue(commandQueue);
-    clReleaseContext(context);
   }
 }
 
