@@ -31,12 +31,14 @@ endif()
 
 add_executable(gpumark ${CMAKE_SOURCES})
 
-target_link_libraries(gpumark PRIVATE Threads::Threads dl)
+if(LINUX OR APPLE)
+  target_link_libraries(gpumark PRIVATE Threads::Threads dl)
+endif()
 
 # Optimization/stack protector
-target_compile_options(gpumark PRIVATE -Og -g)
-target_link_options(gpumark PRIVATE -g)
+target_compile_options(gpumark PRIVATE -O2 -fstack-protector-strong)
 
+set(CMAKE_SKIP_RPATH TRUE)
 # Run on changes to backend/hip_kernels.cu:
 find_program(HIPCC_EXECUTABLE hipcc)
 if(HIPCC_EXECUTABLE)

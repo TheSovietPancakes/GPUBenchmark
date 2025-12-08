@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <dlfcn.h>
 #include <iomanip>
 #include <iostream>
 // #include "/opt/cuda/include/cuda_runtime.h"
@@ -55,7 +54,7 @@ CudaBackend::nvmlDeviceGetMemoryInfo_t CudaBackend::nvmlDeviceGetMemoryInfo = nu
     if (err != 0) {                                                                                                                                  \
       const char* msg;                                                                                                                               \
       cuGetErrorString(err, &msg);                                                                                                                   \
-      std::cerr << "CUDA Driver API error: " << msg << " (" << err << ")\n";                                                                         \
+      std::cerr << "CUDA Driver API error in cuda_backend.cpp:" << __LINE__ << ": " << msg << " (" << err << ")\n";                                                                         \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -64,7 +63,7 @@ CudaBackend::nvmlDeviceGetMemoryInfo_t CudaBackend::nvmlDeviceGetMemoryInfo = nu
   do {                                                                                                                                               \
     CudaBackend::nvmlReturn_t err = call;                                                                                                            \
     if (err != 0) {                                                                                                                                  \
-      std::cerr << "NVML error: " << err << "\n";                                                                                                    \
+      std::cerr << "NVML error in cuda_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                                                                    \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)

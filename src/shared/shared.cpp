@@ -1,5 +1,4 @@
 #include "shared.hpp"
-#include "sys/ioctl.h"
 #include <cstdio>
 #include <iostream>
 #include <sstream>
@@ -35,13 +34,6 @@ bool stringsRoughlyMatch(const std::string& a, const std::string& b) {
   std::string trimmedA = trim(a);
   std::string trimmedB = trim(b);
   return tolower(trimmedA) == tolower(trimmedB);
-}
-
-int get_terminal_width() {
-  struct winsize w;
-  if (ioctl(1, TIOCGWINSZ, &w) == -1 || w.ws_col == 0)
-    return 80; // fallback
-  return w.ws_col;
 }
 
 std::string removeUnreadable(const std::string& str) {

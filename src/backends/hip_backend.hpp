@@ -10,7 +10,7 @@ static void* rsmiHandle = nullptr;
 bool init();
 bool gpuUtilizationSafe(int dev);
 bool memUtilizationSafe(int dev);
-long getAndPrintTemperature(int dev);
+int64_t getAndPrintTemperature(int dev);
 bool slowBenchmarks(float linearSetTime, float linearMultiplyTime);
 void prepareDeviceForBenchmarking(int dev);
 void runBenchmark();

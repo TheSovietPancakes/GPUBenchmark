@@ -5,7 +5,7 @@
 bool HIPBackend::init() {
   const char* hipLibNames[] = {"hipamd64.dll", "hiprtc.dll", "hiprtc64.dll"};
   for (const char* libName : hipLibNames) {
-    hipHandle = FindLibrary(libName);
+    hipHandle = LoadLibraryA(libName);
     if (hipHandle)
       break;
   }
@@ -17,7 +17,7 @@ bool HIPBackend::init() {
 
   const char* rsmiLibNames[] = {"rocm_smi64.dll", "rocm_smi.dll"};
   for (const char* libName : rsmiLibNames) {
-    rsmiHandle = FindLibrary(libName);
+    rsmiHandle = LoadLibraryA(libName);
     if (rsmiHandle)
       break;
   }
@@ -27,16 +27,16 @@ bool HIPBackend::init() {
     return false;
   }
 
-#define LOAD_CUDA_SYMBOL(sym)                                                                                                                        \
-  sym = (sym##_t)GetProcAddress(static_cast<HMODULE>(cudaHandle), #sym);                                                                             \
+#define LOAD_HIP_SYMBOL(sym)                                                                                                                         \
+  sym = (sym##_t)GetProcAddress(static_cast<HMODULE>(hipHandle), #sym);                                                                              \
   if (!sym) {                                                                                                                                        \
     std::cerr << "Failed to load symbol " #sym " for HIP.dll.\n";                                                                                    \
     shutdown();                                                                                                                                      \
     return false;                                                                                                                                    \
   }
 
-#define LOAD_NVML_SYMBOL(sym)                                                                                                                        \
-  sym = (sym##_t)GetProcAddress(static_cast<HMODULE>(nvmlHandle), #sym);                                                                             \
+#define LOAD_RSMI_SYMBOL(sym)                                                                                                                        \
+  sym = (sym##_t)GetProcAddress(static_cast<HMODULE>(rsmiHandle), #sym);                                                                             \
   if (!sym) {                                                                                                                                        \
     std::cerr << "Failed to load symbol " #sym " for RSMI.dll.\n";                                                                                   \
     shutdown();                                                                                                                                      \

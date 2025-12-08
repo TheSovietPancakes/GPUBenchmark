@@ -33,7 +33,7 @@ CLBackend::clReleaseMemObject_t CLBackend::clReleaseMemObject = nullptr;
   do {                                                                                                                                               \
     int err = call;                                                                                                                                  \
     if (err != 0) {                                                                                                                                  \
-      std::cerr << OPENCL << "OpenCL error at " << __FILE__ << ":" << __LINE__ << ": " << err << "\n";                                               \
+      std::cerr << OPENCL << "OpenCL error at opencl_backend.cpp:" << __LINE__ << ": " << err << "\n";                                               \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)

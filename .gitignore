@@ -10,3 +10,8 @@ debug
 *.so
 .vscode
 .cache
+Makefile
+CMakeCache.txt
+cmake_install.cmake
+install
+CMakeFiles

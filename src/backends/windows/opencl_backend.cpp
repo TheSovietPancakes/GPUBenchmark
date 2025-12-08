@@ -3,19 +3,18 @@
 #include <windows.h>
 
 bool CLBackend::init() {
-  hipHandle = FindLibrary("OpenCL.dll");
-  if (!hipHandle) {
+  clHandle = LoadLibraryA("OpenCL.dll");
+  if (!clHandle) {
     std::cerr << "Failed to load OpenCL DLL.\n";
     shutdown();
     return false;
   }
 
 #define LOAD_CL_SYMBOL(sym)                                                                                                                          \
-  sym = (sym##_t)dlsym(clHandle, #sym);                                                                                                              \
+  sym = (sym##_t)GetProcAddress(static_cast<HMODULE>(clHandle), #sym);                                                                              \
   if (!sym) {                                                                                                                                        \
-    std::cerr << "Failed to load symbol for OpenCL so " #sym ": " << dlerror() << "\n";                                                              \
-    dlclose(clHandle);                                                                                                                               \
-    clHandle = nullptr;                                                                                                                              \
+    std::cerr << "Failed to load symbol for OpenCL dll " #sym << "\n";                                                              \
+    shutdown();                                                                                                                                      \
     return false;                                                                                                                                    \
   }
 

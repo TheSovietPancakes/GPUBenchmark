@@ -2,7 +2,6 @@
 #include "../shared/shared.hpp"
 #include "modules/hip_kernels.hpp"
 #include <algorithm>
-#include <dlfcn.h>
 #include <iomanip>
 #include <iostream>
 #include <vector>
@@ -45,7 +44,7 @@ HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get = 
   do {                                                                                                                                               \
     hipError_t err = call;                                                                                                                           \
     if (err != hipSuccess) {                                                                                                                         \
-      std::cerr << HIP << "HIP error at " << __FILE__ << ":" << __LINE__ << ": " << hipGetErrorString(err) << "\n";                                  \
+      std::cerr << HIP << "HIP error at hip_backend.cpp:" << __LINE__ << ": " << hipGetErrorString(err) << "\n";                                  \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -54,7 +53,7 @@ HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get = 
   do {                                                                                                                                               \
     HIPBackend::rsmi_status_t err = call;                                                                                                            \
     if (err != 0) {                                                                                                                                  \
-      std::cerr << HIP << "RSMI error at " << __FILE__ << ":" << __LINE__ << ": " << err << "\n";                                                    \
+      std::cerr << HIP << "RSMI error at hip_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                    \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -70,8 +69,8 @@ bool HIPBackend::gpuUtilizationSafe(int dev) {
 }
 
 bool HIPBackend::memUtilizationSafe(int dev) {
-  unsigned long usedMemory = 0;
-  unsigned long totalMemory = 0;
+  uint64_t usedMemory = 0;
+  uint64_t totalMemory = 0;
   RSMI_ERR(rsmi_dev_memory_usage_get(dev, rsmi_memory_type_t::RSMI_MEM_TYPE_VRAM, &usedMemory));
   RSMI_ERR(rsmi_dev_memory_total_get(dev, rsmi_memory_type_t::RSMI_MEM_TYPE_VRAM, &totalMemory));
   // This bench will use rougly 2 GB of memory. Check if the available VRAM is sufficient.
@@ -101,8 +100,8 @@ bool HIPBackend::memUtilizationSafe(int dev) {
   return true;
 }
 
-long HIPBackend::getAndPrintTemperature(int dev) {
-  long temp = 0;
+int64_t HIPBackend::getAndPrintTemperature(int dev) {
+  int64_t temp = 0;
   RSMI_ERR(rsmi_dev_temp_metric_get(dev, rsmi_temperature_type_t::RSMI_TEMP_TYPE_EDGE, rsmi_temperature_metric_t::RSMI_TEMP_CURRENT, &temp));
   temp /= 1000; // Millidegrees to degrees. WHY AMD?
   std::string_view tempColor;
