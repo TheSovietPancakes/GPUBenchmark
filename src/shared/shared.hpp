@@ -15,6 +15,7 @@ constexpr const static std::string_view HIP = "\033[0m\033[34m[HIP]\033[0m ";
 constexpr const static std::string_view ORCHESTRATOR = "\033[33m[GPUMark]\033[0m ";
 constexpr const static std::string_view VULKAN = "\033[36m[Vulkan]\033[0m ";
 constexpr const static std::string_view OPENCL = "\033[35m[OpenCL]\033[0m ";
+constexpr const static std::string_view OPENGL = "\033[32m[OpenGL]\033[0m ";
 
 std::string tolower(const std::string& str);
 std::string toupper(const std::string& str);

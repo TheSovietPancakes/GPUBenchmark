@@ -83,7 +83,7 @@ void CLBackend::prepareDeviceForBenchmarking(cl_device_id dev) {
     return;
   }
   // Create a program
-  cl_program program = clCreateProgramWithSource(context, 1, &openclKernelSource, nullptr, nullptr);
+  cl_program program = clCreateProgramWithSource(context, 1, &opencl_kernels_cl, nullptr, nullptr);
   if (program == nullptr) {
     std::cout << OPENCL << "Failed to create OpenCL program for this platform, skipping...\n";
     clReleaseCommandQueue(queue);

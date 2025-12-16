@@ -1,0 +1,5 @@
+file(READ "${INPUT}" CONTENT)
+file(WRITE "${OUTPUT}" "// Auto-generated\n")
+file(APPEND "${OUTPUT}" "static const char* ${SYMBOL} = R\"ptx(\n")
+file(APPEND "${OUTPUT}" "${CONTENT}")
+file(APPEND "${OUTPUT}" "\n)ptx\";\n")
