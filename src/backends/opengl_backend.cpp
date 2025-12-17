@@ -1,94 +1,78 @@
 #include "opengl_backend.hpp"
 #include "../shared/shared.hpp"
+#include "modules/gl_backends/aluHeavyFrag.hpp"
+#include "modules/gl_backends/memHeavyFrag.hpp"
 #include "modules/gl_backends/triangleFrag.hpp"
 #include "modules/gl_backends/triangleVer.hpp"
 
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <vector>
 
-#include <EGL/egl.h>
 #include <GL/gl.h>
 #include <GLES3/gl3.h>
+#include <GLFW/glfw3.h>
+#include <math.h>
 
-float GLBackend::runTriangleBenchmark(int width, int height, int frames) {
-  // ===== EGL pbuffer setup =====
-  EGLDisplay eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-  if (eglDisplay == EGL_NO_DISPLAY) {
-    std::cerr << "Failed to get EGL display\n";
-    return -1.0f;
+GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int frames, const char** fragShaderSrc) {
+  if (!glfwInit()) {
+    std::cerr << "Failed to initialize GLFW\n";
+    return {.totalElapsed = 0.0f, .penalty = -1.0f};
   }
-  if (!eglInitialize(eglDisplay, nullptr, nullptr)) {
-    std::cerr << "Failed to initialize EGL\n";
-    return -1.0f;
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  GLFWwindow* window = glfwCreateWindow(width, height, "OpenGL Benchmark", nullptr, nullptr);
+  if (!window) {
+    std::cerr << "Failed to create GLFW window\n";
+    glfwTerminate();
+    return {.totalElapsed = 0.0f, .penalty = -1.0f};
   }
+  glfwMakeContextCurrent(window);
+  glfwSwapInterval(0);
 
-  EGLint configAttribs[] = {EGL_SURFACE_TYPE,
-                            EGL_PBUFFER_BIT,
-                            EGL_RENDERABLE_TYPE,
-                            EGL_OPENGL_ES2_BIT,
-                            EGL_RED_SIZE,
-                            8,
-                            EGL_GREEN_SIZE,
-                            8,
-                            EGL_BLUE_SIZE,
-                            8,
-                            EGL_ALPHA_SIZE,
-                            8,
-                            EGL_NONE};
-  EGLConfig config;
-  EGLint numConfigs;
-  if (!eglChooseConfig(eglDisplay, configAttribs, &config, 1, &numConfigs) || numConfigs == 0) {
-    std::cerr << "Failed to choose EGL config\n";
-    return -1.0f;
-  }
-
-  EGLint pbufferAttribs[] = {
-      EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE,
-  };
-  EGLSurface eglSurface = eglCreatePbufferSurface(eglDisplay, config, pbufferAttribs);
-  if (eglSurface == EGL_NO_SURFACE) {
-    std::cerr << "Failed to create EGL pbuffer surface\n";
-    return -1.0f;
-  }
-
-  if (!eglBindAPI(EGL_OPENGL_ES_API)) {
-    std::cerr << "Failed to bind OpenGL ES API\n";
-    return -1.0f;
-  }
-
-  EGLint ctxAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
-  EGLContext eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, ctxAttribs);
-  if (eglContext == EGL_NO_CONTEXT) {
-    std::cerr << "Failed to create EGL context\n";
-    return -1.0f;
-  }
-
-  if (!eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-    std::cerr << "Failed to make EGL context current\n";
-    return -1.0f;
-  }
-
-  // ===== GL setup =====
   glViewport(0, 0, width, height);
 
-  const char* vsSrc = R"(attribute vec2 pos; void main() { gl_Position = vec4(pos,0.0,1.0); })";
-  const char* fsSrc = R"(void main() { gl_FragColor = vec4(1.0,0.5,0.2,1.0); })";
-
   GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vs, 1, &vsSrc, NULL);
+  glShaderSource(vs, 1, &triangleVert_src, NULL);
   glCompileShader(vs);
 
   GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fs, 1, &fsSrc, NULL);
+  glShaderSource(fs, 1, fragShaderSrc, NULL);
   glCompileShader(fs);
 
   GLuint prog = glCreateProgram();
   glAttachShader(prog, vs);
   glAttachShader(prog, fs);
-  glBindAttribLocation(prog, 0, "pos");
   glLinkProgram(prog);
   glUseProgram(prog);
+
+  auto checkShader = [](GLuint s) {
+    GLint ok;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+      char log[4096];
+      glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+      std::cerr << log << "\n";
+      std::abort();
+    }
+  };
+
+  auto checkProgram = [](GLuint p) {
+    GLint ok;
+    glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+      char log[4096];
+      glGetProgramInfoLog(p, sizeof(log), nullptr, log);
+      std::cerr << log << "\n";
+      std::abort();
+    }
+  };
+
+  checkShader(vs);
+  checkShader(fs);
+  checkProgram(prog);
 
   float verts[] = {-0.6f, -0.4f, 0.6f, -0.4f, 0.0f, 0.6f};
   GLuint vao, vbo;
@@ -101,35 +85,163 @@ float GLBackend::runTriangleBenchmark(int width, int height, int frames) {
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
-  // ===== Benchmark loop =====
   GLuint query;
   glGenQueries(1, &query);
   glBeginQuery(GL_TIME_ELAPSED, query);
-  unsigned char output[width * height * 4];
-  for (int i = 0; i < frames; ++i) {
+  int framesPassed = 0;
+  while (framesPassed < frames && !glfwWindowShouldClose(window)) {
     glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawArrays(GL_TRIANGLES, 0, 3);
+    glfwSwapBuffers(window);
+    // glfwPollEvents();
     glFinish();
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, output); // Ensure rendering is done
-    eglSwapBuffers(eglDisplay, eglSurface);
+    // Spin vertices
+    float angle = 0.01f;
+    float cosA = cosf(angle);
+    float sinA = sinf(angle);
+    for (int j = 0; j < std::size(verts); j += 2) {
+      float x = verts[j];
+      float y = verts[j + 1];
+      float newX = x * cosA - y * sinA;
+      float newY = x * sinA + y * cosA;
+      verts[j] = newX;
+      verts[j + 1] = newY;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+    ++framesPassed;
   }
+
   glEndQuery(GL_TIME_ELAPSED);
-  GLuint timeElapsed;
+  GLuint timeElapsed = 0;
   glGetQueryObjectuiv(query, GL_QUERY_RESULT, &timeElapsed);
+
   // Cleanup
   glDeleteBuffers(1, &vbo);
   glDeleteVertexArrays(1, &vao);
   glDeleteShader(vs);
   glDeleteShader(fs);
   glDeleteProgram(prog);
+  glfwDestroyWindow(window);
+  glfwTerminate();
 
-  eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  eglDestroyContext(eglDisplay, eglContext);
-  eglDestroySurface(eglDisplay, eglSurface);
-  eglTerminate(eglDisplay);
+  // TODO: Pick either time or pps as the main determinant of score. I am unsure which is better right now LOL
+  size_t pixelTotal = width * height * framesPassed;
+  float pixelsPerSecond = static_cast<float>(pixelTotal) / (static_cast<float>(timeElapsed) / 1e9f);
 
-  return timeElapsed / 1e9f; // Convert nanoseconds to seconds
+  float penalty = static_cast<float>(frames - framesPassed);
+  float totalTimeSec = static_cast<float>(timeElapsed) / 1e9f;
+  return {.totalElapsed = totalTimeSec, .penalty = penalty};
+}
+
+GLBackend::GLresult GLBackend::runMemBenchmark(int width, int height, int frames, int texWidth, int texHeight) {
+  if (!glfwInit()) {
+    std::cerr << "Failed to initialize GLFW\n";
+    return {.totalElapsed = 0.0f, .penalty = -1.0f};
+  }
+
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  GLFWwindow* window = glfwCreateWindow(width, height, "Memory Benchmark", nullptr, nullptr);
+  if (!window) {
+    std::cerr << "Failed to create GLFW window\n";
+    glfwTerminate();
+    return {.totalElapsed = 0.0f, .penalty = -1.0f};
+  }
+
+  glfwMakeContextCurrent(window);
+  glfwSwapInterval(0); // uncouple from refresh rate
+  glViewport(0, 0, width, height);
+
+  // --- Compile shaders ---
+  GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vs, 1, &triangleVert_src, nullptr);
+  glCompileShader(vs);
+
+  GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fs, 1, &memHeavyFrag_src, nullptr);
+  glCompileShader(fs);
+
+  GLuint prog = glCreateProgram();
+  glAttachShader(prog, vs);
+  glAttachShader(prog, fs);
+  glLinkProgram(prog);
+  glUseProgram(prog);
+
+  // --- Setup triangle ---
+  float verts[] = {-0.6f, -0.4f, 0.6f, -0.4f, 0.0f, 0.6f};
+  GLuint vao, vbo;
+  glGenVertexArrays(1, &vao);
+  glBindVertexArray(vao);
+
+  glGenBuffers(1, &vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+  // --- Setup texture ---
+  GLuint tex;
+  glGenTextures(1, &tex);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  // Allocate texture
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texWidth, texHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+  // Initialize texture with non-zero data
+  std::vector<float> initData(texWidth * texHeight * 4);
+  for (size_t i = 0; i < initData.size(); ++i)
+    initData[i] = float(i % 256) / 255.0f;
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, texWidth, texHeight, GL_RGBA, GL_FLOAT, initData.data());
+
+  // Bind uniforms
+  glUseProgram(prog);
+  glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
+  glUniform2i(glGetUniformLocation(prog, "uTexSize"), texWidth, texHeight);
+
+  // --- GPU timing ---
+  GLuint query;
+  glGenQueries(1, &query);
+  glBeginQuery(GL_TIME_ELAPSED, query);
+
+  int framesPassed = 0;
+  while (framesPassed < frames && !glfwWindowShouldClose(window)) {
+    glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glfwSwapBuffers(window);
+    glFinish(); // ensure timing includes GPU work
+    ++framesPassed;
+  }
+
+  glEndQuery(GL_TIME_ELAPSED);
+  GLuint timeElapsed = 0;
+  glGetQueryObjectuiv(query, GL_QUERY_RESULT, &timeElapsed);
+
+  // --- Cleanup ---
+  glDeleteBuffers(1, &vbo);
+  glDeleteVertexArrays(1, &vao);
+  glDeleteShader(vs);
+  glDeleteShader(fs);
+  glDeleteProgram(prog);
+  glDeleteTextures(1, &tex);
+  glfwDestroyWindow(window);
+  glfwTerminate();
+
+  // --- Compute metrics ---
+  size_t pixelTotal = width * height * framesPassed;
+  float pixelsPerSecond = static_cast<float>(pixelTotal) / (static_cast<float>(timeElapsed) / 1e9f);
+  float penalty = static_cast<float>(frames - framesPassed);
+  float totalTimeSec = static_cast<float>(timeElapsed) / 1e9f;
+
+  return {.totalElapsed = totalTimeSec, .penalty = penalty};
 }
 
 void GLBackend::runBenchmark() {
@@ -137,6 +249,46 @@ void GLBackend::runBenchmark() {
   int WIDTH = 1920;
   int HEIGHT = 1080;
   std::cout << OPENGL << "Running triangle benchmark (" << WIDTH << "x" << HEIGHT << ", " << FRAMES << " frames)...\n";
-  float timeTaken = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES);
-  std::cout << OPENGL << "Triangle benchmark completed in " << std::fixed << std::setprecision(5) << timeTaken << " seconds.\n";
+  GLresult result = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES, &triangleFrag_src);
+  if (result.penalty < 0.0f) {
+    std::cerr << OPENGL << "Benchmark failed.\n";
+    return;
+  }
+  if (result.penalty > 0.0f) {
+    std::cout << OPENGL << "Triangle benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << result.totalElapsed
+              << " seconds with penalty of " << result.penalty << " frames.\n";
+    std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
+    wrapped_print(std::string(OPENGL), text);
+    // TODO
+  }
+  std::cout << OPENGL << "Triangle benchmark completed in " << std::fixed << std::setprecision(5) << result.totalElapsed << " seconds.\n";
+
+  GLresult aluResult = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES, &aluHeavyFrag_src);
+  if (aluResult.penalty < 0.0f) {
+    std::cerr << OPENGL << "ALU-heavy benchmark failed.\n";
+    return;
+  }
+  if (aluResult.penalty > 0.0f) {
+    std::cout << OPENGL << "ALU-heavy benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << aluResult.totalElapsed
+              << " seconds with penalty of " << aluResult.penalty << " frames.\n";
+    std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
+    wrapped_print(std::string(OPENGL), text);
+    // TODO
+  }
+  std::cout << OPENGL << "ALU-heavy benchmark completed in " << std::fixed << std::setprecision(5) << aluResult.totalElapsed << " seconds.\n";
+
+  int TEX_WIDTH = 4096;
+  GLresult memResult = runMemBenchmark(WIDTH, HEIGHT, FRAMES, TEX_WIDTH, TEX_WIDTH);
+  if (memResult.penalty < 0.0f) {
+    std::cerr << OPENGL << "Memory-heavy benchmark failed.\n";
+    return;
+  }
+  if (memResult.penalty > 0.0f) {
+    std::cout << OPENGL << "Memory-heavy benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << memResult.totalElapsed
+              << " seconds with penalty of " << memResult.penalty << " frames.\n";
+    std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
+    wrapped_print(std::string(OPENGL), text);
+    // TODO
+  }
+  std::cout << OPENGL << "Memory-heavy benchmark completed in " << std::fixed << std::setprecision(5) << memResult.totalElapsed << " seconds.\n";
 }

@@ -40,14 +40,13 @@ endif()
 add_executable(gpumark ${SOURCES})
 find_package(Threads REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+find_package(glfw3 REQUIRED)
 
 if(UNIX)
   target_link_libraries(gpumark PRIVATE dl)
 endif()
 
-target_link_libraries(gpumark PRIVATE Threads::Threads EGL GL)
+target_link_libraries(gpumark PRIVATE Threads::Threads EGL GL glfw)
 
 # Optimization/stack protector
 target_compile_options(gpumark PRIVATE
@@ -135,6 +134,7 @@ add_custom_command(
   DEPENDS ${OPENGL_TRIANGLE_VERT_SRC}
 )
 add_custom_target(opengl_triangle_vert ALL DEPENDS ${OPENGL_TRIANGLE_VERT_HPP})
+add_dependencies(gpumark opengl_triangle_vert)
 # 2. triangleFrag.glsl -> triangleFrag.hpp
 set(OPENGL_TRIANGLE_FRAG_SRC ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/triangleFrag.glsl)
 set(OPENGL_TRIANGLE_FRAG_HPP ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/triangleFrag.hpp)
@@ -148,5 +148,34 @@ add_custom_command(
   DEPENDS ${OPENGL_TRIANGLE_FRAG_SRC}
 )
 add_custom_target(opengl_triangle_frag ALL DEPENDS ${OPENGL_TRIANGLE_FRAG_HPP})
+add_dependencies(gpumark opengl_triangle_frag)
+# 3. aluHeavyFrag.glsl -> aluHeavyFrag.hpp
+set(OPENGL_ALUHEAVY_FRAG_SRC ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/aluHeavyFrag.glsl)
+set(OPENGL_ALUHEAVY_FRAG_HPP ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/aluHeavyFrag.hpp)
+add_custom_command(
+  OUTPUT ${OPENGL_ALUHEAVY_FRAG_HPP}
+  COMMAND ${CMAKE_COMMAND}
+    -DINPUT=${OPENGL_ALUHEAVY_FRAG_SRC}
+    -DOUTPUT=${OPENGL_ALUHEAVY_FRAG_HPP}
+    -DSYMBOL=aluHeavyFrag_src
+    -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+  DEPENDS ${OPENGL_ALUHEAVY_FRAG_SRC}
+)
+add_custom_target(opengl_aluheavy_frag ALL DEPENDS ${OPENGL_ALUHEAVY_FRAG_HPP})
+add_dependencies(gpumark opengl_aluheavy_frag)
+# 3. memHeavyFrag.glsl -> memHeavyFrag.hpp
+set(OPENGL_MEMHEAVY_FRAG_SRC ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/memHeavyFrag.glsl)
+set(OPENGL_MEMHEAVY_FRAG_HPP ${CMAKE_SOURCE_DIR}/src/backends/modules/gl_backends/memHeavyFrag.hpp)
+add_custom_command(
+  OUTPUT ${OPENGL_MEMHEAVY_FRAG_HPP}
+  COMMAND ${CMAKE_COMMAND}
+    -DINPUT=${OPENGL_MEMHEAVY_FRAG_SRC}
+    -DOUTPUT=${OPENGL_MEMHEAVY_FRAG_HPP}
+    -DSYMBOL=memHeavyFrag_src
+    -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+  DEPENDS ${OPENGL_MEMHEAVY_FRAG_SRC}
+)
+add_custom_target(opengl_memheavy_frag ALL DEPENDS ${OPENGL_MEMHEAVY_FRAG_HPP})
+add_dependencies(gpumark opengl_memheavy_frag)
 
 add_dependencies(gpumark opencl_kernels)
