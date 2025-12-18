@@ -16,21 +16,22 @@
 #include <math.h>
 
 GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int frames, const char** fragShaderSrc) {
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return {.totalElapsed = 0.0f, .penalty = -1.0f};
-  }
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   GLFWwindow* window = glfwCreateWindow(width, height, "OpenGL Benchmark", nullptr, nullptr);
   if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
+    const char* err;
+    glfwGetError(&err);
+    std::cerr << "Failed to create GLFW window: " << err << "\n";
     glfwTerminate();
     return {.totalElapsed = 0.0f, .penalty = -1.0f};
   }
+
   glfwMakeContextCurrent(window);
   glfwSwapInterval(0);
+  glfwSetWindowSize(glfwGetCurrentContext(), width, height);
 
   glViewport(0, 0, width, height);
 
@@ -116,7 +117,8 @@ GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int f
   glEndQuery(GL_TIME_ELAPSED);
   GLuint timeElapsed = 0;
   glGetQueryObjectuiv(query, GL_QUERY_RESULT, &timeElapsed);
-
+  // Tell the window it is time to close
+  glfwSetWindowShouldClose(window, GLFW_TRUE);
   // Cleanup
   glDeleteBuffers(1, &vbo);
   glDeleteVertexArrays(1, &vao);
@@ -124,7 +126,6 @@ GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int f
   glDeleteShader(fs);
   glDeleteProgram(prog);
   glfwDestroyWindow(window);
-  glfwTerminate();
 
   // TODO: Pick either time or pps as the main determinant of score. I am unsure which is better right now LOL
   size_t pixelTotal = width * height * framesPassed;
@@ -136,23 +137,22 @@ GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int f
 }
 
 GLBackend::GLresult GLBackend::runMemBenchmark(int width, int height, int frames, int texWidth, int texHeight) {
-  if (!glfwInit()) {
-    std::cerr << "Failed to initialize GLFW\n";
-    return {.totalElapsed = 0.0f, .penalty = -1.0f};
-  }
-
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   GLFWwindow* window = glfwCreateWindow(width, height, "Memory Benchmark", nullptr, nullptr);
   if (!window) {
-    std::cerr << "Failed to create GLFW window\n";
+    const char* err;
+    glfwGetError(&err);
+    std::cerr << "Failed to create GLFW window: " << err << "\n";
     glfwTerminate();
     return {.totalElapsed = 0.0f, .penalty = -1.0f};
   }
 
   glfwMakeContextCurrent(window);
   glfwSwapInterval(0); // uncouple from refresh rate
+  glfwSetWindowSize(glfwGetCurrentContext(), width, height);
   glViewport(0, 0, width, height);
 
   // --- Compile shaders ---
@@ -224,7 +224,7 @@ GLBackend::GLresult GLBackend::runMemBenchmark(int width, int height, int frames
   glEndQuery(GL_TIME_ELAPSED);
   GLuint timeElapsed = 0;
   glGetQueryObjectuiv(query, GL_QUERY_RESULT, &timeElapsed);
-
+  glfwSetWindowShouldClose(window, GLFW_TRUE);
   // --- Cleanup ---
   glDeleteBuffers(1, &vbo);
   glDeleteVertexArrays(1, &vao);
@@ -233,7 +233,6 @@ GLBackend::GLresult GLBackend::runMemBenchmark(int width, int height, int frames
   glDeleteProgram(prog);
   glDeleteTextures(1, &tex);
   glfwDestroyWindow(window);
-  glfwTerminate();
 
   // --- Compute metrics ---
   size_t pixelTotal = width * height * framesPassed;
@@ -245,13 +244,18 @@ GLBackend::GLresult GLBackend::runMemBenchmark(int width, int height, int frames
 }
 
 void GLBackend::runBenchmark() {
+  if (!glfwInit()) {
+    std::cerr << "Failed to initialize GLFW\n";
+    return;
+  }
   int FRAMES = 500;
   int WIDTH = 1920;
   int HEIGHT = 1080;
   std::cout << OPENGL << "Running triangle benchmark (" << WIDTH << "x" << HEIGHT << ", " << FRAMES << " frames)...\n";
   GLresult result = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES, &triangleFrag_src);
-  if (result.penalty < 0.0f) {
+  if (result.totalElapsed < 0.0f) {
     std::cerr << OPENGL << "Benchmark failed.\n";
+    glfwTerminate();
     return;
   }
   if (result.penalty > 0.0f) {
@@ -264,8 +268,9 @@ void GLBackend::runBenchmark() {
   std::cout << OPENGL << "Triangle benchmark completed in " << std::fixed << std::setprecision(5) << result.totalElapsed << " seconds.\n";
 
   GLresult aluResult = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES, &aluHeavyFrag_src);
-  if (aluResult.penalty < 0.0f) {
+  if (aluResult.totalElapsed < 0.0f) {
     std::cerr << OPENGL << "ALU-heavy benchmark failed.\n";
+    glfwTerminate();
     return;
   }
   if (aluResult.penalty > 0.0f) {
@@ -281,6 +286,7 @@ void GLBackend::runBenchmark() {
   GLresult memResult = runMemBenchmark(WIDTH, HEIGHT, FRAMES, TEX_WIDTH, TEX_WIDTH);
   if (memResult.penalty < 0.0f) {
     std::cerr << OPENGL << "Memory-heavy benchmark failed.\n";
+    glfwTerminate();
     return;
   }
   if (memResult.penalty > 0.0f) {
@@ -291,4 +297,5 @@ void GLBackend::runBenchmark() {
     // TODO
   }
   std::cout << OPENGL << "Memory-heavy benchmark completed in " << std::fixed << std::setprecision(5) << memResult.totalElapsed << " seconds.\n";
+  glfwTerminate();
 }
