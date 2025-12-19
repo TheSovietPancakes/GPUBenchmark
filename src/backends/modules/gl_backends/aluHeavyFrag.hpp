@@ -7,8 +7,9 @@ void main() {
   float x = gl_FragCoord.x;
   float y = gl_FragCoord.y;
   float result = 0.0;
-  for (int i = 0; i < 1000; ++i) {
-    result += sin(x * 0.01 + float(i)) * cos(y * 0.01 + float(i));
+  const float ITER = 2000.0; // more iterations = more ALU stress
+  for (float i = 0; i < ITER; ++i) {
+    result += sin(x * 0.01 + i) * cos(y * 0.01 - i) - tanh(i * 0.001) + exp(-i * 0.0001);
     result = sqrt(abs(result)) + log(abs(result) + 1.0);
   }
   color = vec4(fract(result), fract(result * 1.3), fract(result * 1.7), 1.0);

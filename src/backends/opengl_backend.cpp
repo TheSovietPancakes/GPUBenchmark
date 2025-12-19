@@ -95,7 +95,8 @@ GLBackend::GLresult GLBackend::runTriangleBenchmark(int width, int height, int f
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glfwSwapBuffers(window);
-    // glfwPollEvents();
+    if (framesPassed % 10 == 0)
+      glfwPollEvents();
     glFinish();
     // Spin vertices
     float angle = 0.01f;
@@ -257,23 +258,22 @@ void GLBackend::runBenchmark() {
     std::cerr << OPENGL << "Benchmark failed.\n";
     glfwTerminate();
     return;
-  }
-  if (result.penalty > 0.0f) {
+  } else if (result.penalty > 0.0f) {
     std::cout << OPENGL << "Triangle benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << result.totalElapsed
               << " seconds with penalty of " << result.penalty << " frames.\n";
     std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
     wrapped_print(std::string(OPENGL), text);
     // TODO
+  } else {
+    std::cout << OPENGL << "Triangle benchmark completed in " << std::fixed << std::setprecision(5) << result.totalElapsed << " seconds.\n";
   }
-  std::cout << OPENGL << "Triangle benchmark completed in " << std::fixed << std::setprecision(5) << result.totalElapsed << " seconds.\n";
 
   GLresult aluResult = runTriangleBenchmark(WIDTH, HEIGHT, FRAMES, &aluHeavyFrag_src);
   if (aluResult.totalElapsed < 0.0f) {
     std::cerr << OPENGL << "ALU-heavy benchmark failed.\n";
     glfwTerminate();
     return;
-  }
-  if (aluResult.penalty > 0.0f) {
+  } else if (aluResult.penalty > 0.0f) {
     std::cout << OPENGL << "ALU-heavy benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << aluResult.totalElapsed
               << " seconds with penalty of " << aluResult.penalty << " frames.\n";
     std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
@@ -288,14 +288,14 @@ void GLBackend::runBenchmark() {
     std::cerr << OPENGL << "Memory-heavy benchmark failed.\n";
     glfwTerminate();
     return;
-  }
-  if (memResult.penalty > 0.0f) {
+  } else if (memResult.penalty > 0.0f) {
     std::cout << OPENGL << "Memory-heavy benchmark incomplete, finished in " << std::fixed << std::setprecision(5) << memResult.totalElapsed
               << " seconds with penalty of " << memResult.penalty << " frames.\n";
     std::string text = "Would you like to retry the benchmark to get \na complete result, without penalty?";
     wrapped_print(std::string(OPENGL), text);
     // TODO
+  } else {
+    std::cout << OPENGL << "Memory-heavy benchmark completed in " << std::fixed << std::setprecision(5) << memResult.totalElapsed << " seconds.\n";
   }
-  std::cout << OPENGL << "Memory-heavy benchmark completed in " << std::fixed << std::setprecision(5) << memResult.totalElapsed << " seconds.\n";
   glfwTerminate();
 }

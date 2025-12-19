@@ -20,6 +20,7 @@ float runFmaBenchmark(unsigned int threadsPerBlock, void* fmaFunc);
 float runIntegerThroughputBenchmark(unsigned int threadsPerBlock, void* kernel);
 float runSharedMemoryBenchmark(unsigned int threadsPerBlock, void* kernel);
 float runSgemmBenchmark(unsigned int threadsPerBlock, void* kernel);
+float runPCIEThroughputBenchmark();
 
 typedef void* CUfunction;
 typedef void* CUmodule;
@@ -70,7 +71,7 @@ struct cudaDeviceProp {
   size_t texturePitchAlignment;               /**< Pitch alignment requirement for texture references bound to pitched memory */
   int multiProcessorCount;                    /**< Number of multiprocessors on device */
   int integrated;                             /**< Device is integrated as opposed to discrete */
-  int canMapHostMemory;                       /**< Device can map host memory with cudaHostAlloc/cudaHostGetDevicePointer */
+  int canMapHostMemory;                       /**< Device can map host memory with cuMemAllocHost/cudaHostGetDevicePointer */
   int maxTexture1D;                           /**< Maximum 1D texture size */
   int maxTexture1DMipmap;                     /**< Maximum 1D mipmapped texture size */
   int maxTexture2D[2];                        /**< Maximum 2D texture dimensions */
@@ -150,6 +151,8 @@ struct cudaDeviceProp {
 typedef CUresult (*cuInit_t)(unsigned int);
 typedef CUresult (*cuMemAlloc_t)(CUdeviceptr*, size_t);
 typedef CUresult (*cuMemFree_t)(CUdeviceptr);
+typedef CUresult (*cuMemAllocHost_t)(void**, size_t, unsigned int);
+typedef CUresult (*cuMemFreeHost_t)(void*);
 typedef CUresult (*cuDeviceGetCount_t)(int*);
 typedef CUresult (*cuDeviceGet_t)(CUdevice*, int);
 typedef CUresult (*cuDeviceGetName_t)(char*, int, CUdevice);
@@ -161,8 +164,8 @@ typedef CUresult (*cuModuleUnload_t)(CUmodule);
 typedef CUresult (*cuModuleGetFunction_t)(CUfunction*, CUmodule, const char*);
 typedef CUresult (*cuLaunchKernel_t)(CUfunction, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int,
                                      CUstream, void**, void**);
-typedef CUresult (*cuMemcpyHtoD_t)(CUdeviceptr, const void*, size_t);
-typedef CUresult (*cuMemcpyDtoH_t)(void*, CUdeviceptr, size_t);
+typedef CUresult (*cuMemcpyHtoD_t)(CUdeviceptr dst, const void* src, size_t);
+typedef CUresult (*cuMemcpyDtoH_t)(void* dst, CUdeviceptr src, size_t);
 typedef CUresult (*cuMemsetD8_t)(CUdeviceptr, unsigned char, size_t);
 typedef CUresult (*cuEventCreate_t)(CUevent*, unsigned int);
 typedef CUresult (*cuEventRecord_t)(CUevent, CUstream);
@@ -188,7 +191,9 @@ typedef nvmlReturn_t (*nvmlDeviceGetMemoryInfo_t)(nvmlDevice_t, nvmlMemory_t*);
 
 extern cuInit_t cuInit;
 extern cuMemAlloc_t cuMemAlloc;
+extern cuMemAllocHost_t cuMemAllocHost;
 extern cuMemFree_t cuMemFree;
+extern cuMemFreeHost_t cuMemFreeHost;
 extern cuDeviceGetCount_t cuDeviceGetCount;
 extern cuDeviceGet_t cuDeviceGet;
 extern cuDeviceGetName_t cuDeviceGetName;

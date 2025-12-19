@@ -10,6 +10,8 @@
 
 CudaBackend::cuInit_t CudaBackend::cuInit = nullptr;
 CudaBackend::cuMemAlloc_t CudaBackend::cuMemAlloc = nullptr;
+CudaBackend::cuMemAllocHost_t CudaBackend::cuMemAllocHost = nullptr;
+CudaBackend::cuMemFreeHost_t CudaBackend::cuMemFreeHost = nullptr;
 CudaBackend::cuMemFree_t CudaBackend::cuMemFree = nullptr;
 CudaBackend::cuDeviceGetCount_t CudaBackend::cuDeviceGetCount = nullptr;
 CudaBackend::cuDeviceGet_t CudaBackend::cuDeviceGet = nullptr;
@@ -54,7 +56,7 @@ CudaBackend::nvmlDeviceGetMemoryInfo_t CudaBackend::nvmlDeviceGetMemoryInfo = nu
     if (err != 0) {                                                                                                                                  \
       const char* msg;                                                                                                                               \
       cuGetErrorString(err, &msg);                                                                                                                   \
-      std::cerr << "CUDA Driver API error in cuda_backend.cpp:" << __LINE__ << ": " << msg << " (" << err << ")\n";                                                                         \
+      std::cerr << "CUDA Driver API error in cuda_backend.cpp:" << __LINE__ << ": " << msg << " (" << err << ")\n";                                  \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -63,7 +65,7 @@ CudaBackend::nvmlDeviceGetMemoryInfo_t CudaBackend::nvmlDeviceGetMemoryInfo = nu
   do {                                                                                                                                               \
     CudaBackend::nvmlReturn_t err = call;                                                                                                            \
     if (err != 0) {                                                                                                                                  \
-      std::cerr << "NVML error in cuda_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                                                                    \
+      std::cerr << "NVML error in cuda_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                             \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -235,6 +237,7 @@ void CudaBackend::prepareDeviceForBenchmarking(int dev) {
   runIntegerThroughputBenchmark(threadsPerBlock, intThroughputKernel);
   runSharedMemoryBenchmark(threadsPerBlock, sharedMemoryKernel);
   runSgemmBenchmark(threadsPerBlock, sgemmKernel);
+  runPCIEThroughputBenchmark();
   // Unload context, module, functions, free data, get ready for next device
   CUDA_ERR(cuModuleUnload(module));
   CUDA_ERR(cuCtxDestroy(context));
@@ -464,6 +467,73 @@ float CudaBackend::runSgemmBenchmark(unsigned int threadsPerBlock, void* kernel)
   delete[] h_B;
   delete[] h_C;
   return milliseconds;
+}
+
+float CudaBackend::runPCIEThroughputBenchmark() {
+  constexpr const unsigned long long N = (2ull * 1024 * 1024 * 1024); // 2GB
+  constexpr int iterations = 5;
+  std::cout << CUDA << "7) PCIe Throughput (2 GB transfer, avg of " << iterations << " runs)..." << std::flush;
+  char* h_data = nullptr;
+  CUDA_ERR(cuMemAllocHost((void**)&h_data, N * sizeof(char), 0));
+  for (unsigned long long i = 0ull; i < N; ++i) {
+    h_data[i] = static_cast<char>(i % 256);
+  }
+  CUdeviceptr d_data = 0;
+  CUDA_ERR(cuMemAlloc(&d_data, N * sizeof(char)));
+
+  float totalMillisecondsHtoD = 0;
+  float totalMillisecondsDtoH = 0;
+
+  for (int i = 0; i < iterations; ++i) {
+    // Host to Device
+    float millisecondsHtoD = 0;
+    {
+      CUstream stream;
+      CUDA_ERR(cuStreamCreate(&stream, 0));
+      CUevent startEvent, stopEvent;
+      CUDA_ERR(cuEventCreate(&startEvent, 0));
+      CUDA_ERR(cuEventCreate(&stopEvent, 0));
+      CUDA_ERR(cuEventRecord(startEvent, stream));
+      CUDA_ERR(cuMemcpyHtoD(d_data, h_data, N * sizeof(char)));
+      CUDA_ERR(cuEventRecord(stopEvent, stream));
+      CUDA_ERR(cuEventSynchronize(stopEvent));
+      CUDA_ERR(cuEventElapsedTime(&millisecondsHtoD, startEvent, stopEvent));
+      CUDA_ERR(cuEventDestroy(startEvent));
+      CUDA_ERR(cuEventDestroy(stopEvent));
+      CUDA_ERR(cuStreamDestroy(stream));
+    }
+    totalMillisecondsHtoD += millisecondsHtoD;
+
+    // Device to Host
+    float millisecondsDtoH = 0;
+    {
+      CUstream stream;
+      CUDA_ERR(cuStreamCreate(&stream, 0));
+      CUevent startEvent, stopEvent;
+      CUDA_ERR(cuEventCreate(&startEvent, 0));
+      CUDA_ERR(cuEventCreate(&stopEvent, 0));
+      CUDA_ERR(cuEventRecord(startEvent, stream));
+      CUDA_ERR(cuMemcpyDtoH(h_data, d_data, N * sizeof(char)));
+      CUDA_ERR(cuEventRecord(stopEvent, stream));
+      CUDA_ERR(cuEventSynchronize(stopEvent));
+      CUDA_ERR(cuEventElapsedTime(&millisecondsDtoH, startEvent, stopEvent));
+      CUDA_ERR(cuEventDestroy(startEvent));
+      CUDA_ERR(cuEventDestroy(stopEvent));
+      CUDA_ERR(cuStreamDestroy(stream));
+    }
+    totalMillisecondsDtoH += millisecondsDtoH;
+  }
+
+  float avgMillisecondsHtoD = totalMillisecondsHtoD / iterations;
+  float avgMillisecondsDtoH = totalMillisecondsDtoH / iterations;
+
+  std::cout << "\r" << CUDA << "7) PCIe Throughput (2 GB transfer, avg of " << iterations
+            << " runs)... Host to Device: " << (N / (avgMillisecondsHtoD / 1000.0f) / (1024 * 1024))
+            << " MB/s, Device to Host: " << (N / (avgMillisecondsDtoH / 1000.0f) / (1024 * 1024)) << " MB/s\n";
+
+  CUDA_ERR(cuMemFree(d_data));
+  CUDA_ERR(cuMemFreeHost(h_data));
+  return (avgMillisecondsHtoD + avgMillisecondsDtoH) / 2.0f;
 }
 
 void CudaBackend::shutdown() {

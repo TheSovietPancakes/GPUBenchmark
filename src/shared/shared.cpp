@@ -63,7 +63,7 @@ std::string removeUnreadable(const std::string& str) {
 //        example of
 //        wrapped text.
 void wrapped_print(const std::string& prefix, const std::string& text) {
-  int width = get_terminal_width();
+  int width = std::min(100, get_terminal_width());
   int prefix_len = removeUnreadable(prefix).size();
 
   std::istringstream lines(text);

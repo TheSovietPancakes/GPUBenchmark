@@ -47,6 +47,8 @@ bool HIPBackend::init() {
   LOAD_HIP_SYMBOL(hipGetDevice)
   LOAD_HIP_SYMBOL(hipGetDeviceProperties)
   LOAD_HIP_SYMBOL(hipMalloc)
+  LOAD_HIP_SYMBOL(hipHostMalloc)
+  LOAD_HIP_SYMBOL(hipHostFree)
   LOAD_HIP_SYMBOL(hipFree)
   LOAD_HIP_SYMBOL(hipMemcpy)
   LOAD_HIP_SYMBOL(hipMemset)

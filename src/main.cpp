@@ -9,17 +9,17 @@
 int main() {
   std::cout << ORCHESTRATOR << "GPU Benchmark starting...\n";
 
-  // // CUDA
-  // if (CudaBackend::init()) {
-  //   CudaBackend::runBenchmark();
-  //   CudaBackend::shutdown();
-  // }
+  // CUDA
+  if (CudaBackend::init()) {
+    CudaBackend::runBenchmark();
+    CudaBackend::shutdown();
+  }
 
-  // // HIP
-  // if (HIPBackend::init()) {
-  //   HIPBackend::runBenchmark();
-  //   HIPBackend::shutdown();
-  // }
+  // HIP
+  if (HIPBackend::init()) {
+    HIPBackend::runBenchmark();
+    HIPBackend::shutdown();
+  }
 
   // // Vulkan
   // VulkanBackend vk;
@@ -35,7 +35,7 @@ int main() {
   // }
 
   // OpenGL
-  GLBackend::runBenchmark();
+  // GLBackend::runBenchmark();
 
   std::cout << "All benchmarks done.\n";
   return 0;

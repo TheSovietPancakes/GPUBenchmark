@@ -28,6 +28,7 @@ float runFmaBenchmark(unsigned int threadsPerBlock, hipFunction_t fmaFunc);
 float runIntegerThroughputBenchmark(unsigned int threadsPerBlock, hipFunction_t integerThroughputFunc);
 float runSharedMemoryBenchmark(unsigned int threadsPerBlock, hipFunction_t sharedMemoryFunc);
 float runSgemmBenchmark(unsigned int threadsPerBlock, hipFunction_t sgemmFunc);
+float runPCIEThroughputBenchmark();
 
 // ------------------------
 // HIP typedefs
@@ -223,6 +224,8 @@ typedef hipError_t (*hipGetDeviceCount_t)(int*);
 typedef hipError_t (*hipGetDevice_t)(int*);
 typedef hipError_t (*hipGetDeviceProperties_t)(hipDeviceProp_t*, int);
 typedef hipError_t (*hipMalloc_t)(void**, size_t);
+typedef hipError_t (*hipHostMalloc_t)(void**, size_t, unsigned int);
+typedef hipError_t (*hipHostFree_t)(void*);
 typedef hipError_t (*hipFree_t)(void*);
 typedef hipError_t (*hipMemcpy_t)(void*, const void*, size_t, hipMemcpyKind);
 typedef hipError_t (*hipMemset_t)(void*, int, size_t);
@@ -264,6 +267,8 @@ extern hipGetDeviceCount_t hipGetDeviceCount;
 extern hipGetDevice_t hipGetDevice;
 extern hipGetDeviceProperties_t hipGetDeviceProperties;
 extern hipMalloc_t hipMalloc;
+extern hipHostMalloc_t hipHostMalloc;
+extern hipHostFree_t hipHostFree;
 extern hipFree_t hipFree;
 extern hipMemcpy_t hipMemcpy;
 extern hipMemset_t hipMemset;

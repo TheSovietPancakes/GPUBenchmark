@@ -16,10 +16,15 @@ void main() {
     ivec2 frag = ivec2(gl_FragCoord.xy);
     float seed = float(frag.x) + float(frag.y) * 4096.0;
     vec4 acc = vec4(0.0);
-    const int ITER = 10000; // more iterations = more memory stress
+    const float ITER = 1000.0; // more iterations = more memory stress
 
-    for (int i = 0; i < ITER; i++) {
-      acc += texture(uTex, (vec2(frag) + 0.5) / vec2(uTexSize));
+    for (float i = 0.0; i < ITER; i++) {
+      // Look up the texture multiple times to stress memory bandwidth
+      // in the GPU (NOT over the bus)
+      acc += vec4(sin(texture(uTex, (vec2(frag) + 0.5) / vec2(uTexSize)).r + seed + i), 
+            cos(texture(uTex, (vec2(frag) + 0.5) / vec2(uTexSize)).g + seed + i), 
+            sin(texture(uTex, (vec2(frag) + 0.5) / vec2(uTexSize)).b + seed * 0.5 + i), 
+            cos(texture(uTex, (vec2(frag) + 0.5) / vec2(uTexSize)).a + seed * 0.5 + i)) * 0.01;
     }
     color = acc / float(ITER);
 }

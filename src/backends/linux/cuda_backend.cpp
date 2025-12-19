@@ -39,6 +39,8 @@ bool CudaBackend::init() {
   LOAD_CUDA_SYMBOL(cuInit);
   LOAD_CUDA_SYMBOL(cuMemAlloc);
   LOAD_CUDA_SYMBOL(cuMemFree);
+  LOAD_CUDA_SYMBOL(cuMemAllocHost);
+  LOAD_CUDA_SYMBOL(cuMemFreeHost);
   LOAD_CUDA_SYMBOL(cuDeviceGetCount);
   LOAD_CUDA_SYMBOL(cuDeviceGet);
   LOAD_CUDA_SYMBOL(cuDeviceGetName);

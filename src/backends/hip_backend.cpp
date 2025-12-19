@@ -13,6 +13,8 @@ HIPBackend::hipGetDeviceCount_t HIPBackend::hipGetDeviceCount = nullptr;
 HIPBackend::hipGetDevice_t HIPBackend::hipGetDevice = nullptr;
 HIPBackend::hipGetDeviceProperties_t HIPBackend::hipGetDeviceProperties = nullptr;
 HIPBackend::hipMalloc_t HIPBackend::hipMalloc = nullptr;
+HIPBackend::hipHostMalloc_t HIPBackend::hipHostMalloc = nullptr;
+HIPBackend::hipHostFree_t HIPBackend::hipHostFree = nullptr;
 HIPBackend::hipFree_t HIPBackend::hipFree = nullptr;
 HIPBackend::hipMemcpy_t HIPBackend::hipMemcpy = nullptr;
 HIPBackend::hipMemset_t HIPBackend::hipMemset = nullptr;
@@ -44,7 +46,7 @@ HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get = 
   do {                                                                                                                                               \
     hipError_t err = call;                                                                                                                           \
     if (err != hipSuccess) {                                                                                                                         \
-      std::cerr << HIP << "HIP error at hip_backend.cpp:" << __LINE__ << ": " << hipGetErrorString(err) << "\n";                                  \
+      std::cerr << HIP << "HIP error at hip_backend.cpp:" << __LINE__ << ": " << hipGetErrorString(err) << "\n";                                     \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -53,7 +55,7 @@ HIPBackend::rsmi_dev_busy_percent_get_t HIPBackend::rsmi_dev_busy_percent_get = 
   do {                                                                                                                                               \
     HIPBackend::rsmi_status_t err = call;                                                                                                            \
     if (err != 0) {                                                                                                                                  \
-      std::cerr << HIP << "RSMI error at hip_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                    \
+      std::cerr << HIP << "RSMI error at hip_backend.cpp:" << __LINE__ << ": " << err << "\n";                                                       \
       exit(EXIT_FAILURE);                                                                                                                            \
     }                                                                                                                                                \
   } while (0)
@@ -188,6 +190,7 @@ void HIPBackend::prepareDeviceForBenchmarking(int dev) {
   runIntegerThroughputBenchmark(threadsPerBlock, intThroughputKernel);
   runSharedMemoryBenchmark(threadsPerBlock, sharedMemoryKernel);
   runSgemmBenchmark(threadsPerBlock, sgemmKernel);
+  runPCIEThroughputBenchmark();
 
   HIP_ERR(hipModuleUnload(module));
   HIP_ERR(hipDeviceReset());
@@ -416,6 +419,73 @@ float HIPBackend::runSgemmBenchmark(unsigned int threadsPerBlock, hipFunction_t 
   delete[] h_B;
   delete[] h_C;
   return milliseconds;
+}
+
+float HIPBackend::runPCIEThroughputBenchmark() {
+  constexpr const unsigned long long N = (2ull * 1024 * 1024 * 1024); // 2GB
+  constexpr int iterations = 5;
+  std::cout << HIP << "7) PCIe Throughput (2 GB transfer, avg of " << iterations << " runs)..." << std::flush;
+  char* h_data = nullptr;
+  HIP_ERR(hipHostMalloc((void**)&h_data, N * sizeof(char), 0));
+  for (unsigned long long i = 0ull; i < N; ++i) {
+    h_data[i] = static_cast<char>(i % 256);
+  }
+  hipDeviceptr_t d_data = 0;
+  HIP_ERR(hipMalloc(&d_data, N * sizeof(char)));
+
+  float totalMillisecondsHtoD = 0;
+  float totalMillisecondsDtoH = 0;
+
+  for (int i = 0; i < iterations; ++i) {
+    // Host to Device
+    float millisecondsHtoD = 0;
+    {
+      hipStream_t stream;
+      HIP_ERR(hipStreamCreate(&stream));
+      hipEvent_t startEvent, stopEvent;
+      HIP_ERR(hipEventCreate(&startEvent));
+      HIP_ERR(hipEventCreate(&stopEvent));
+      HIP_ERR(hipEventRecord(startEvent, stream));
+      HIP_ERR(hipMemcpy(d_data, h_data, N * sizeof(char), hipMemcpyHostToDevice));
+      HIP_ERR(hipEventRecord(stopEvent, stream));
+      HIP_ERR(hipEventSynchronize(stopEvent));
+      HIP_ERR(hipEventElapsedTime(&millisecondsHtoD, startEvent, stopEvent));
+      HIP_ERR(hipEventDestroy(startEvent));
+      HIP_ERR(hipEventDestroy(stopEvent));
+      HIP_ERR(hipStreamDestroy(stream));
+    }
+    totalMillisecondsHtoD += millisecondsHtoD;
+
+    // Device to Host
+    float millisecondsDtoH = 0;
+    {
+      hipStream_t stream;
+      HIP_ERR(hipStreamCreate(&stream));
+      hipEvent_t startEvent, stopEvent;
+      HIP_ERR(hipEventCreate(&startEvent));
+      HIP_ERR(hipEventCreate(&stopEvent));
+      HIP_ERR(hipEventRecord(startEvent, stream));
+      HIP_ERR(hipMemcpy(h_data, d_data, N * sizeof(char), hipMemcpyDeviceToHost));
+      HIP_ERR(hipEventRecord(stopEvent, stream));
+      HIP_ERR(hipEventSynchronize(stopEvent));
+      HIP_ERR(hipEventElapsedTime(&millisecondsDtoH, startEvent, stopEvent));
+      HIP_ERR(hipEventDestroy(startEvent));
+      HIP_ERR(hipEventDestroy(stopEvent));
+      HIP_ERR(hipStreamDestroy(stream));
+    }
+    totalMillisecondsDtoH += millisecondsDtoH;
+  }
+
+  float avgMillisecondsHtoD = totalMillisecondsHtoD / iterations;
+  float avgMillisecondsDtoH = totalMillisecondsDtoH / iterations;
+
+  std::cout << "\r" << HIP << "7) PCIe Throughput (2 GB transfer, avg of " << iterations
+            << " runs)... Host to Device: " << (N / (avgMillisecondsHtoD / 1000.0f) / (1024 * 1024))
+            << " MB/s, Device to Host: " << (N / (avgMillisecondsDtoH / 1000.0f) / (1024 * 1024)) << " MB/s\n";
+
+  HIP_ERR(hipFree(d_data));
+  HIP_ERR(hipHostFree(h_data));
+  return (avgMillisecondsHtoD + avgMillisecondsDtoH) / 2.0f;
 }
 
 void HIPBackend::shutdown() {
